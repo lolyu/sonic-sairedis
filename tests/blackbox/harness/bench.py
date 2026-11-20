@@ -18,6 +18,7 @@ import time
 from .client import Client
 from .mock import select, summarize
 from .procstat import CpuSnapshot, memory
+from .profile import Profiler
 from .syncd import Syncd
 
 
@@ -32,6 +33,7 @@ class Bench(object):
         self.mock = None
         self.init_reply = None
         self.warnings = []
+        self.phases = 0
 
     def start(self, profile=None, syncd_args=None, comm=None, init=True, cpus=None):
         if os.path.isdir(self.workdir):
@@ -80,9 +82,22 @@ class Bench(object):
     def snapshot(self):
         return CpuSnapshot(self.pids(), threads_of=self.syncd.pid)
 
+    def profiler(self, name):
+        """A perf profiler of the processes --bench-perf names, for one phase, or None."""
+        if not self.options.perf:
+            return None
+        self.phases += 1
+        prefix = os.path.join(self.workdir, "{:02d}-{}".format(self.phases, re.sub(r"[^\w.-]+", "_", name)))
+        pids = self.pids()
+        return Profiler({p: pids[p] for p in self.options.perf}, prefix, freq=self.options.perf_freq,
+                        event=self.options.perf_event, callgraph=self.options.perf_callgraph)
+
     def measure(self, name, action, ops=(("*", "*"),), objects=None, timeout=600):
         """Runs one client command, or a function returning a reply, and
         measures it."""
+        profiler = self.profiler(name)
+        if profiler:
+            profiler.start()
         self.mock.reset()
         commands = self.env.redis.command_stats()
         before = self.snapshot()
@@ -93,12 +108,20 @@ class Bench(object):
             reply = self.client.run(action, timeout=timeout)
         t1 = time.monotonic_ns()
         after = self.snapshot()
+        if profiler:
+            profiler.stop()
         stats = self.mock.stats()
-        return self.result(name, reply, stats, before, after, commands, (t1 - t0) / 1e9, ops,
-                           reply.get("objects") if objects is None else objects)
+        result = self.result(name, reply, stats, before, after, commands, (t1 - t0) / 1e9, ops,
+                             reply.get("objects") if objects is None else objects)
+        if profiler:
+            result["profile"] = profiler.report()
+        return result
 
     def measure_window(self, name, seconds, ops=(("*", "*"),), objects=None):
         """Measures an idle window: what syncd does on its own, as polling counters."""
+        profiler = self.profiler(name)
+        if profiler:
+            profiler.start()
         self.mock.reset()
         commands = self.env.redis.command_stats()
         before = self.snapshot()
@@ -106,8 +129,13 @@ class Bench(object):
         time.sleep(seconds)
         t1 = time.monotonic_ns()
         after = self.snapshot()
+        if profiler:
+            profiler.stop()
         stats = self.mock.stats()
-        return self.result(name, {}, stats, before, after, commands, (t1 - t0) / 1e9, ops, objects)
+        result = self.result(name, {}, stats, before, after, commands, (t1 - t0) / 1e9, ops, objects)
+        if profiler:
+            result["profile"] = profiler.report()
+        return result
 
     def result(self, name, reply, stats, before, after, commands, wall_s, ops, objects):
         selected = []
