@@ -167,6 +167,7 @@ currentObj
 currentObject
 currentView
 cv
+DBConnector
 dbg
 deallocate
 decap
@@ -222,6 +223,8 @@ gSwitchId
 GUID
 hardcoded
 hasEqualAttribute
+hdel
+hiredis
 hostif
 hpp
 HSV
