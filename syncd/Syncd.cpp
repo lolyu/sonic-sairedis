@@ -3319,6 +3319,7 @@ sai_status_t Syncd::processFlexCounterEvent(
 void Syncd::syncUpdateRedisQuadEvent(
         _In_ sai_status_t status,
         _In_ sai_common_api_t api,
+        _In_ const sai_object_meta_key_t& metaKey,
         _In_ const swss::KeyOpFieldsValuesTuple &kco)
 {
     SWSS_LOG_ENTER();
@@ -3338,12 +3339,7 @@ void Syncd::syncUpdateRedisQuadEvent(
     // changes and we only want to apply changes when api succeeded. This
     // applies to init view mode and apply view mode.
 
-    const std::string& key = kfvKey(kco);
-
     auto& values = kfvFieldsValues(kco);
-
-    sai_object_meta_key_t metaKey;
-    sai_deserialize_object_meta_key(key, metaKey);
 
     const bool initView = isInitViewMode();
 
@@ -3573,7 +3569,7 @@ sai_status_t Syncd::processQuadEvent(
     {
         sai_status_t status = processQuadEventInInitViewMode(metaKey.objecttype, strObjectId, api, attr_count, attr_list);
 
-        syncUpdateRedisQuadEvent(status, api, kco);
+        syncUpdateRedisQuadEvent(status, api, metaKey, kco);
 
         return status;
     }
@@ -3669,7 +3665,7 @@ sai_status_t Syncd::processQuadEvent(
         sendApiResponse(api, status);
     }
 
-    syncUpdateRedisQuadEvent(status, api, kco);
+    syncUpdateRedisQuadEvent(status, api, metaKey, kco);
 
     return status;
 }
